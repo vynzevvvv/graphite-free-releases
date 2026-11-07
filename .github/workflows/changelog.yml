@@ -1,0 +1,36 @@
+# When a Free App release is published here (tag like v0.3.0), tell the
+# website so the approved Free App changelog draft for it goes public on
+# usegraphite.app/changelog. A draft that isn't approved yet stays private
+# until it is. Only the version number is sent.
+#
+# Needs the repository secret CHANGELOG_AUTO_SECRET (same value as the Vercel
+# env var). Optional repository variable CHANGELOG_SITE_URL (default
+# https://usegraphite.app).
+name: Changelog
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mark the Free App release in the changelog
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          CHANGELOG_AUTO_SECRET: ${{ secrets.CHANGELOG_AUTO_SECRET }}
+          SITE: ${{ vars.CHANGELOG_SITE_URL || 'https://usegraphite.app' }}
+        run: |
+          if [ -z "$CHANGELOG_AUTO_SECRET" ]; then echo "CHANGELOG_AUTO_SECRET is not set; skipping."; exit 0; fi
+          VERSION="${TAG#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then echo "Tag $TAG is not a version; skipping."; exit 0; fi
+          curl -fsS -X POST "${SITE%/}/api/admin/changelog-auto" \
+            -H "content-type: application/json" \
+            -H "authorization: Bearer $CHANGELOG_AUTO_SECRET" \
+            --data "{\"op\":\"release\",\"surface\":\"free\",\"version\":\"$VERSION\"}"
